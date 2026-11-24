@@ -34,3 +34,5 @@ cargo test --workspace --locked
 
 Run the native application with `cargo run` when manually checking UI behavior.
 Report checks that could not run and whether the UI was manually checked.
+
+Event diagnostics are opt-in through `SANDCASTLE_LOG_INPUT=1`.

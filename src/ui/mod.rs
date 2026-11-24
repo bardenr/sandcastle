@@ -16,11 +16,15 @@ struct State {
     window: Option<Arc<Window>>,
     gpu: Option<renderer::State>,
     pressed_keys: HashSet<KeyCode>,
+    log_input: bool,
 }
 
 pub(crate) fn run() {
     let event_loop = EventLoop::new().expect("Failed to create event loop");
-    let mut state = State::default();
+    let mut state = State {
+        log_input: std::env::var_os("SANDCASTLE_LOG_INPUT").as_deref() == Some("1".as_ref()),
+        ..State::default()
+    };
     event_loop.run_app(&mut state).expect("Event loop failed");
 }
 
@@ -54,7 +58,9 @@ impl ApplicationHandler for State {
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                println!("Close requested");
+                if self.log_input {
+                    println!("Close requested");
+                }
                 event_loop.exit();
             }
 
@@ -71,12 +77,16 @@ impl ApplicationHandler for State {
                 match state {
                     ElementState::Pressed => {
                         if !repeat {
-                            println!("Key pressed: {key_code:?}");
+                            if self.log_input {
+                                println!("Key pressed: {key_code:?}");
+                            }
                             self.pressed_keys.insert(key_code);
                         }
                     }
                     ElementState::Released => {
-                        println!("Key released: {key_code:?}");
+                        if self.log_input {
+                            println!("Key released: {key_code:?}");
+                        }
                         self.pressed_keys.remove(&key_code);
                     }
                 }
@@ -87,34 +97,51 @@ impl ApplicationHandler for State {
             }
 
             WindowEvent::CursorMoved { position, .. } => {
-                println!("Mouse moved: ({:.1}, {:.1})", position.x, position.y);
+                if self.log_input {
+                    println!("Mouse moved: ({:.1}, {:.1})", position.x, position.y);
+                }
             }
 
             WindowEvent::MouseInput { state, button, .. } => {
-                let action = match state {
-                    ElementState::Pressed => "pressed",
-                    ElementState::Released => "released",
-                };
-                println!("Mouse {action}: {button:?}");
+                if self.log_input {
+                    let action = match state {
+                        ElementState::Pressed => "pressed",
+                        ElementState::Released => "released",
+                    };
+                    println!("Mouse {action}: {button:?}");
+                }
             }
 
             WindowEvent::Touch(touch) => {
-                println!(
-                    "Touch {:?} id={} at ({:.1}, {:.1})",
-                    touch.phase, touch.id, touch.location.x, touch.location.y
-                );
+                if self.log_input {
+                    println!(
+                        "Touch {:?} id={} at ({:.1}, {:.1})",
+                        touch.phase, touch.id, touch.location.x, touch.location.y
+                    );
+                }
             }
 
             WindowEvent::Resized(size) => {
-                println!("Resized: {}x{}", size.width, size.height);
-                if let Some(gpu) = &mut self.gpu {
-                    renderer::resize(gpu, size.width, size.height);
+                if self.log_input {
+                    println!("Resized: {}x{}", size.width, size.height);
+                }
+                if let Some(gpu) = &mut self.gpu
+                    && renderer::resize(gpu, size.width, size.height)
+                    && let Some(window) = &self.window
+                {
+                    window.request_redraw();
+                }
+            }
+
+            WindowEvent::Occluded(false) => {
+                if let Some(window) = &self.window {
+                    window.request_redraw();
                 }
             }
 
             WindowEvent::RedrawRequested => {
-                if let Some(gpu) = &self.gpu {
-                    renderer::render(gpu);
+                if let (Some(gpu), Some(window)) = (&self.gpu, &self.window) {
+                    renderer::render(gpu, window);
                 }
             }
 

@@ -42,6 +42,7 @@ pub(super) struct State {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
+    drawable: bool,
 }
 
 pub(super) fn init(window: Arc<Window>) -> State {
@@ -73,7 +74,10 @@ pub(super) fn init(window: Arc<Window>) -> State {
         view_formats: vec![],
         desired_maximum_frame_latency: 2,
     };
-    surface.configure(&device, &config);
+    let drawable = size.width > 0 && size.height > 0;
+    if drawable {
+        surface.configure(&device, &config);
+    }
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("shader"),
@@ -150,16 +154,32 @@ pub(super) fn init(window: Arc<Window>) -> State {
         pipeline,
         vertex_buffer,
         index_buffer,
+        drawable,
     }
 }
 
-pub(super) fn resize(state: &mut State, width: u32, height: u32) {
-    state.config.width = width.max(1);
-    state.config.height = height.max(1);
+/// Returns whether the surface changed or resumed and needs a redraw.
+pub(super) fn resize(state: &mut State, width: u32, height: u32) -> bool {
+    if width == 0 || height == 0 {
+        state.drawable = false;
+        return false;
+    }
+    if state.drawable && state.config.width == width && state.config.height == height {
+        return false;
+    }
+
+    state.config.width = width;
+    state.config.height = height;
     state.surface.configure(&state.device, &state.config);
+    state.drawable = true;
+    true
 }
 
-pub(super) fn render(state: &State) {
+pub(super) fn render(state: &State, window: &Window) {
+    if !state.drawable {
+        return;
+    }
+
     let frame = match state.surface.get_current_texture() {
         wgpu::CurrentSurfaceTexture::Success(frame)
         | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
@@ -196,5 +216,6 @@ pub(super) fn render(state: &State) {
     }
 
     state.queue.submit(std::iter::once(encoder.finish()));
+    window.pre_present_notify();
     state.queue.present(frame);
 }
